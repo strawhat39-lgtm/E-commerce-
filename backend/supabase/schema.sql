@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS item_listings (
   status TEXT DEFAULT 'available', -- available, pending, swapped, rented
   listing_type TEXT NOT NULL, -- 'swap', 'rent'
   image_url TEXT,
+  latitude NUMERIC,
+  longitude NUMERIC,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -140,5 +142,21 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   action_type TEXT NOT NULL,
   description TEXT,
   entity_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 13. Transactions (Purchase Records)
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  buyer_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  seller_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  listing_id UUID REFERENCES item_listings(id) ON DELETE SET NULL,
+  item_title TEXT NOT NULL,
+  amount NUMERIC DEFAULT 0,
+  payment_method TEXT DEFAULT 'upi',
+  buyer_address TEXT,
+  buyer_mobile TEXT,
+  buyer_bio TEXT,
+  status TEXT DEFAULT 'completed',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

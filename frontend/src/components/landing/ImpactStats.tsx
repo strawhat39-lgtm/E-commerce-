@@ -2,13 +2,7 @@
 
 import { motion, useInView } from 'framer-motion';
 import { useRef, useState, useEffect } from 'react';
-
-const stats = [
-  { value: 128.5, suffix: 'kg', label: 'CO₂ Saved', icon: '🌱', color: '#39FF14' },
-  { value: 8456, suffix: '', label: 'Transactions', icon: '🔄', color: '#0DFFC6' },
-  { value: 2847, suffix: '', label: 'Active Users', icon: '👥', color: '#BF5AF2' },
-  { value: 1243, suffix: '', label: 'Items Listed', icon: '📦', color: '#FFD700' },
-];
+import { useLanguage } from '@/context/LanguageContext';
 
 function AnimatedCounter({ target, suffix, inView }: { target: number; suffix: string; inView: boolean }) {
   const [count, setCount] = useState(0);
@@ -37,6 +31,14 @@ function AnimatedCounter({ target, suffix, inView }: { target: number; suffix: s
 export default function ImpactStats() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: '-100px' });
+  const { t } = useLanguage();
+
+  const stats = [
+    { value: 128.5, suffix: 'kg', label: t('imp_stat1'), icon: '🌱', color: '#39FF14' },
+    { value: 8456, suffix: '', label: t('imp_stat2'), icon: '🔄', color: '#0DFFC6' },
+    { value: 2847, suffix: '', label: t('imp_stat3'), icon: '👥', color: '#BF5AF2' },
+    { value: 1243, suffix: '', label: t('imp_stat4'), icon: '📦', color: '#FFD700' },
+  ];
 
   return (
     <section className="py-24 relative" ref={ref}>
@@ -49,9 +51,9 @@ export default function ImpactStats() {
           className="text-center mb-14"
         >
           <h2 className="font-heading text-4xl lg:text-5xl font-bold">
-            Real Impact, <span className="gradient-text-warm">Real Numbers</span>
+            {t('imp_title1')} <span className="gradient-text-warm">{t('imp_title2')}</span>
           </h2>
-          <p className="text-muted mt-3">Our community&apos;s collective impact, updated in real time.</p>
+          <p className="text-muted mt-3">{t('imp_desc')}</p>
         </motion.div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">

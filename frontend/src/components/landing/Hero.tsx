@@ -2,10 +2,19 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import { useLanguage } from '@/context/LanguageContext';
+
+const LiveScanner = dynamic(() => import('./LiveScanner'), { ssr: false });
 
 export default function Hero() {
+  const router = useRouter();
+  const { t } = useLanguage();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -19,7 +28,8 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-background">
+    <>
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-background">
       {/* Background Interactive Glow */}
       <motion.div
         animate={{
@@ -66,24 +76,24 @@ export default function Hero() {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-neon-green" />
               </div>
               <span className="text-xs font-heading font-bold tracking-widest text-neon-green uppercase drop-shadow-[0_0_8px_rgba(57,255,20,0.8)]">
-                Next-Gen Circular Platform
+                {t('hero_badge')}
               </span>
             </motion.div>
 
             {/* Headline */}
             <h1 className="font-heading text-5xl sm:text-6xl lg:text-[5.5rem] font-black leading-[1.05] tracking-tight">
-              Track. Trade.
+              {t('hero_title1')}
               <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-green via-accent-teal to-neon-green bg-[length:200%_auto] animate-[gradient-x_3s_ease_infinite] drop-shadow-[0_0_15px_rgba(57,255,20,0.4)] relative">
-                Transform
+                {t('hero_title2')}
               </span>
               <br />
-              <span className="text-white/90">Sustainability.</span>
+              <span className="opacity-90">{t('hero_title3')}</span>
             </h1>
 
             {/* Subhead */}
             <p className="text-lg text-muted-dim leading-relaxed max-w-xl font-medium border-l-2 border-white/10 pl-6">
-              A premium marketplace where every action counts. Scan products, upcycle goods, and earn elite membership rewards through high-impact eco-habits.
+              {t('hero_desc')}
             </p>
 
             {/* CTA Group */}
@@ -94,19 +104,20 @@ export default function Hero() {
               >
                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                 <span className="relative z-10 flex items-center gap-2">
-                  Get Started
+                  {t('btn_get_started')}
                   <motion.span animate={{ x: [0, 4, 0] }} transition={{ repeat: Infinity, duration: 1.5 }}>→</motion.span>
                 </span>
               </Link>
 
               <button
+                onClick={() => setIsScanning(true)}
                 className="group inline-flex items-center gap-3 px-8 py-4 font-heading text-sm font-bold tracking-widest uppercase text-white glass border border-white/10 rounded-xl hover:border-accent-teal/50 transition-all duration-300"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-teal group-hover:scale-110 transition-transform">
                   <path d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4z"/>
                   <path d="M12 4v16M4 12h16"/>
                 </svg>
-                Scan Product
+                {t('btn_scan')}
               </button>
             </div>
           </motion.div>
@@ -149,12 +160,16 @@ export default function Hero() {
                 <motion.div 
                   animate={{ y: [-10, 10, -10], rotateZ: [0, 5, -5, 0] }} 
                   transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
-                  className="absolute inset-0 glass rounded-3xl border border-white/20 flex items-center justify-center shadow-[0_0_50px_rgba(57,255,20,0.15)] overflow-hidden backdrop-blur-xl"
+                  className="absolute inset-0 glass rounded-3xl border border-white/20 flex items-center justify-center shadow-[0_0_50px_rgba(57,255,20,0.15)] overflow-hidden backdrop-blur-xl group"
                 >
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(57,255,20,0.2),transparent_50%)]" />
-                  <span className="text-7xl font-bold font-heading text-transparent bg-clip-text bg-gradient-to-b from-white to-white/20 relative z-10">
-                    Eco
-                  </span>
+                  <Image 
+                    src="/hero-eco.jpg"
+                    alt="Eco 3D Element"
+                    fill
+                    className="object-cover transition-transform duration-500 group-hover:scale-110"
+                    priority
+                  />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(57,255,20,0.15),transparent_50%)] z-10 pointer-events-none" />
                 </motion.div>
                 
                 {/* Floating elements around the core */}
@@ -178,5 +193,11 @@ export default function Hero() {
         </div>
       </div>
     </section>
+
+      {/* Real Live Camera Scanner Overlay */}
+      {isScanning && (
+        <LiveScanner onClose={() => setIsScanning(false)} />
+      )}
+    </>
   );
 }

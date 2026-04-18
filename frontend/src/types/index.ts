@@ -26,7 +26,9 @@ export interface ListingItem {
   type: ListingType;
   title: string;
   description: string;
-  image: string;
+  image?: string;
+  image_url?: string;
+  imageUrl?: string;
   category: string;
   condition?: Condition;
   location: string;

@@ -7,6 +7,7 @@ const router = express.Router();
 
 // Common Prices (INR)
 const TIER_PRICES: Record<string, number> = {
+  bronze: 0,
   silver: 1,
   gold: 5,
 };
@@ -15,7 +16,7 @@ const TIER_PRICES: Record<string, number> = {
 router.post('/intent', requireAuth, async (req: Request, res: Response) => {
   try {
     const { tier } = req.body;
-    if (!tier || !['silver', 'gold'].includes(tier)) {
+    if (!tier || !['bronze', 'silver', 'gold'].includes(tier)) {
       return res.status(400).json({ error: 'Invalid tier requested' });
     }
 
@@ -23,8 +24,8 @@ router.post('/intent', requireAuth, async (req: Request, res: Response) => {
     
     // Construct standard UPI deep link using env variable
     const merchantId = process.env.MERCHANT_UPI_ID || 'ecoloop@upi';
-    const merchantName = 'Reuse_mart Memberships';
-    const transactionNote = `Upgrade to ${tier.toUpperCase()}`;
+    const merchantName = encodeURIComponent('Reuse_mart Memberships');
+    const transactionNote = encodeURIComponent(`Upgrade to ${tier.toUpperCase()}`);
     const upiString = `upi://pay?pa=${merchantId}&pn=${merchantName}&am=${price}&cu=INR&tn=${transactionNote}`;
 
     // Generate Base64 QR Code
@@ -49,7 +50,7 @@ router.post('/confirm', requireAuth, async (req: Request, res: Response) => {
     const { tier } = req.body;
     const userId = (req as any).user.id;
 
-    if (!tier || !['silver', 'gold'].includes(tier)) {
+    if (!tier || !['bronze', 'silver', 'gold'].includes(tier)) {
       return res.status(400).json({ error: 'Invalid tier requested' });
     }
 

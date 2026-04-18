@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ListingItem } from '@/types';
 import ListingCard from '../marketplace/ListingCard';
+import { useCurrency } from '@/context/CurrencyContext';
 
 interface BuyModeViewProps {
   items: ListingItem[];
@@ -11,6 +13,8 @@ interface BuyModeViewProps {
 }
 
 export default function BuyModeView({ items, userTier, onAction }: BuyModeViewProps) {
+  const { formatPrice } = useCurrency();
+  
   return (
     <div className="space-y-8 pb-10">
       {/* Comparison Widget */}
@@ -34,7 +38,7 @@ export default function BuyModeView({ items, userTier, onAction }: BuyModeViewPr
           <div className="flex-1 text-center sm:text-left">
             <span className="text-xs font-heading font-semibold text-muted-dim tracking-widest uppercase">Standard Choice</span>
             <div className="font-heading text-xl font-bold mt-1 text-accent-red">78kg CO₂</div>
-            <div className="text-xs text-muted mt-1">$450.00</div>
+            <div className="text-xs text-muted mt-1">{formatPrice(37350)}</div>
           </div>
           
           <div className="text-muted-dim text-sm font-heading tracking-widest hidden sm:block">VS</div>
@@ -42,7 +46,7 @@ export default function BuyModeView({ items, userTier, onAction }: BuyModeViewPr
           <div className="flex-1 text-center sm:text-right mt-4 sm:mt-0">
             <span className="text-xs font-heading font-semibold text-neon-green tracking-widest uppercase bg-neon-green/10 px-2 py-1 rounded">Eco Alternative</span>
             <div className="font-heading text-xl font-bold mt-1 text-neon-green">12kg CO₂</div>
-            <div className="text-xs text-muted mt-1">$380.00 <span className="text-neon-green">(-15%)</span></div>
+            <div className="text-xs text-muted mt-1">{formatPrice(31540)} <span className="text-neon-green">(-15%)</span></div>
           </div>
         </div>
 

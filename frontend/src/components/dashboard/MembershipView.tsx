@@ -2,14 +2,15 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { fetchFromApi } from '@/utils/api';
 
 interface MembershipViewProps {
   user: User;
+  initialLaunchTier?: string | null;
 }
 
-export default function MembershipView({ user }: MembershipViewProps) {
+export default function MembershipView({ user, initialLaunchTier }: MembershipViewProps) {
   const derivedTier = user.score >= 2000 ? 'gold' : user.score >= 500 ? 'silver' : 'bronze';
   const [activeOverride, setActiveOverride] = useState<string | null>(null);
   
@@ -18,6 +19,7 @@ export default function MembershipView({ user }: MembershipViewProps) {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<'intent' | 'pass'>('intent');
+  const [hasLaunched, setHasLaunched] = useState(false);
 
   const actualTier = activeOverride || user.membershipTier || derivedTier;
 
@@ -43,6 +45,14 @@ export default function MembershipView({ user }: MembershipViewProps) {
     }
   };
 
+  useEffect(() => {
+    if (initialLaunchTier && !hasLaunched) {
+      setHasLaunched(true);
+      // Let the main thread finish rendering before opening the modal
+      setTimeout(() => handleUpgradeClick(initialLaunchTier), 500);
+    }
+  }, [initialLaunchTier, hasLaunched]);
+
   const simulateCheckout = async () => {
     setIsProcessing(true);
     try {
@@ -67,8 +77,8 @@ export default function MembershipView({ user }: MembershipViewProps) {
       id: 'bronze',
       name: 'Bronze 🌱',
       threshold: 0,
-      discount: '5%',
-      benefits: ['Standard Eco Marketplace', '5% Off Buy Mode', 'Basic Activity Tracking'],
+      discount: '0%',
+      benefits: ['Basic access', 'Standard commission'],
       color: '#CD7F32'
     },
     {
@@ -76,7 +86,7 @@ export default function MembershipView({ user }: MembershipViewProps) {
       name: 'Silver 🌿',
       threshold: 500,
       discount: '15%',
-      benefits: ['15% Off Buy Mode', 'Unlock Early Access (Silver items)', 'Premium Badges'],
+      benefits: ['Reduced commission', 'Priority listing', 'Basic rewards'],
       color: '#C0C0C0'
     },
     {
@@ -84,7 +94,7 @@ export default function MembershipView({ user }: MembershipViewProps) {
       name: 'Gold 🌳',
       threshold: 2000,
       discount: '25%',
-      benefits: ['25% Off Buy Mode', 'Unlock ALL Early Access', 'Priority Support', 'Exclusive Local Rewards'],
+      benefits: ['Lowest commission', 'Top visibility', 'Exclusive rewards', 'Extra eco points bonus'],
       color: '#FFD700'
     }
   ];

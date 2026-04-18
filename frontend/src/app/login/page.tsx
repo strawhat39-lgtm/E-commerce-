@@ -58,7 +58,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden bg-background">
+    <div className="relative min-h-screen flex items-center justify-center p-4 pt-28 pb-12 overflow-hidden bg-background">
       {/* Dynamic Background */}
       <div className="absolute inset-0 pointer-events-none">
         <motion.div 
@@ -195,7 +195,15 @@ export default function LoginPage() {
                 {isLoginState ? 'Create one' : 'Sign in'}
               </button>
             </p>     
-
+            
+            <div className="mt-6 flex justify-center">
+              <Link 
+                href="/admin" 
+                className="text-[10px] uppercase font-heading font-bold tracking-widest text-muted-dim hover:text-white transition-colors flex items-center gap-2"
+              >
+                <span>🔑</span> Admin Portal
+              </Link>
+            </div>
           </div>
         </div>
       </motion.div>

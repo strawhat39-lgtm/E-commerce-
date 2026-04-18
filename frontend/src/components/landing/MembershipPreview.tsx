@@ -2,6 +2,9 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/utils/supabase';
+import { useLanguage } from '@/context/LanguageContext';
 
 const tiers = [
   {
@@ -42,6 +45,15 @@ const tiers = [
 ];
 
 export default function MembershipPreview() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { t } = useLanguage();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
+  }, []);
+
   return (
     <section className="py-24 relative overflow-hidden bg-background">
       <div className="section-container relative z-10">
@@ -52,13 +64,13 @@ export default function MembershipPreview() {
           className="text-center mb-16"
         >
           <span className="inline-block text-xs font-heading font-semibold tracking-[4px] uppercase text-accent-purple mb-4 px-4 py-1 rounded-full bg-accent-purple/10 border border-accent-purple/30 shadow-[0_0_15px_rgba(191,90,242,0.2)]">
-            Elite Rewards
+            {t('mem_prev_badge')}
           </span>
           <h2 className="font-heading text-4xl lg:text-6xl font-bold mt-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]">
-            Your Impact. <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-purple to-accent-teal">Your Status.</span>
+            {t('mem_prev_title1')} <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-purple to-accent-teal">{t('mem_prev_title2')}</span>
           </h2>
           <p className="text-muted mt-4 max-w-2xl mx-auto text-lg leading-relaxed">
-            Every eco-friendly action builds your Activity Score. Higher scores unlock exclusive tiers, permanent discounts, and special platform privileges.
+            {t('mem_prev_desc')}
           </p>
         </motion.div>
 
@@ -74,7 +86,7 @@ export default function MembershipPreview() {
             >
               {tier.popular && (
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-neon-green text-black text-[10px] font-heading font-black tracking-widest px-4 py-1.5 rounded-full uppercase shadow-[0_0_15px_rgba(57,255,20,0.5)]">
-                  Most Elite
+                  {t('mem_most_pop')}
                 </div>
               )}
               
@@ -101,14 +113,14 @@ export default function MembershipPreview() {
               </ul>
 
               <Link
-                href="/login"
+                href={isLoggedIn ? `/dashboard?view=membership&tier=${tier.name.toLowerCase()}` : `/login`}
                 className={`block w-full text-center py-4 rounded-xl font-heading text-sm font-bold tracking-widest uppercase transition-all duration-300 relative z-10 ${
                   tier.popular 
                     ? 'bg-neon-green text-black hover:shadow-[0_0_25px_rgba(57,255,20,0.4)]' 
                     : 'glass border border-white/20 text-white hover:bg-white/5'
                 }`}
               >
-                Join {tier.name}
+                {t('mem_join')} {tier.name}
               </Link>
             </motion.div>
           ))}

@@ -2,8 +2,10 @@
 
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useRef } from 'react';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function ProblemStatement() {
+  const { t } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   
   const { scrollYProgress } = useScroll({
@@ -11,46 +13,51 @@ export default function ProblemStatement() {
     offset: ["start end", "end start"]
   });
 
-  const pollutionOpacity = useTransform(scrollYProgress, [0.2, 0.4, 0.6], [1, 1, 0]);
-  const pollutionY = useTransform(scrollYProgress, [0.2, 0.6], [0, -50]);
+  const pollutionOpacity = useTransform(scrollYProgress, [0.0, 0.4], [1, 0]);
+  const pollutionY = useTransform(scrollYProgress, [0.0, 0.4], [0, -50]);
+  const pollutionScale = useTransform(scrollYProgress, [0.0, 0.4], [1, 0.95]);
   
-  const solutionOpacity = useTransform(scrollYProgress, [0.4, 0.6, 0.8], [0, 1, 1]);
-  const solutionY = useTransform(scrollYProgress, [0.4, 0.6], [50, 0]);
-  const solutionScale = useTransform(scrollYProgress, [0.4, 0.6], [0.9, 1]);
+  const solutionOpacity = useTransform(scrollYProgress, [0.4, 0.8], [0, 1]);
+  const solutionY = useTransform(scrollYProgress, [0.4, 0.8], [50, 0]);
+  const solutionScale = useTransform(scrollYProgress, [0.4, 0.8], [0.95, 1]);
 
   return (
-    <section ref={containerRef} className="relative min-h-[150vh] flex items-center justify-center py-24">
-      {/* Background gradients for pollution/solution transition */}
-      <motion.div 
-        style={{ opacity: pollutionOpacity }}
-        className="absolute inset-0 bg-gradient-to-b from-accent-red/5 to-transparent pointer-events-none" 
-      />
-      <motion.div 
-        style={{ opacity: solutionOpacity }}
-        className="absolute inset-0 bg-gradient-to-b from-transparent to-neon-green/5 pointer-events-none" 
-      />
+    <section ref={containerRef} className="relative h-[200vh] bg-background">
+      {/* Sticky Container */}
+      <div className="sticky top-0 h-screen flex flex-col items-center justify-center overflow-hidden">
+        
+        {/* Background gradients for pollution/solution transition */}
+        <motion.div 
+          style={{ opacity: pollutionOpacity }}
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,77,77,0.05),transparent_70%)] pointer-events-none" 
+        />
+        <motion.div 
+          style={{ opacity: solutionOpacity }}
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(57,255,20,0.05),transparent_70%)] pointer-events-none" 
+        />
 
-      <div className="section-container relative w-full mt-[-20vh]">
-        {/* Pollution Section */}
-        <motion.div
-          style={{ opacity: pollutionOpacity, y: pollutionY, pointerEvents: 'none' }}
-          className="absolute inset-0 flex flex-col items-center justify-center text-center"
-        >
-          <span className="inline-block text-xs font-heading font-semibold tracking-[4px] uppercase text-accent-red mb-4 px-4 py-1 rounded-full glass border border-accent-red/20 shadow-[0_0_15px_rgba(255,77,77,0.2)]">
-            The Reality
-          </span>
-          <h2 className="font-heading text-4xl lg:text-6xl font-bold mt-4 leading-tight drop-shadow-[0_0_10px_rgba(255,77,77,0.3)]">
-            <span className="text-accent-red/90">2.12 billion tons</span> of waste<br/>end up in landfills every year.
-          </h2>
+        <div className="section-container relative w-full h-full flex items-center justify-center">
+          
+          {/* Pollution Section */}
+          <motion.div
+            style={{ opacity: pollutionOpacity, y: pollutionY, scale: pollutionScale }}
+            className="absolute inset-0 flex flex-col items-center justify-center text-center px-4"
+          >
+            <span className="inline-block text-xs font-heading font-semibold tracking-[4px] uppercase text-accent-red mb-4 px-4 py-1 rounded-full bg-accent-red/10 border border-accent-red/20 shadow-[0_0_15px_rgba(255,77,77,0.2)]">
+              {t('prob_reality_badge')}
+            </span>
+            <h2 className="font-heading text-4xl lg:text-6xl font-bold mt-4 leading-tight">
+              <span className="text-accent-red/90 drop-shadow-[0_0_10px_rgba(255,77,77,0.3)]">{t('prob_reality_title1')}</span> {t('prob_reality_title2')}
+            </h2>
           <p className="text-lg text-muted mt-6 max-w-2xl mx-auto leading-relaxed">
-            While perfectly good items go unused, edible food rots, and valuable materials are buried. The linear economy is completely broken.
+            {t('prob_reality_desc')}
           </p>
 
           <div className="grid sm:grid-cols-3 gap-6 mt-12 w-full max-w-4xl mx-auto">
             {[
-              { stat: '40%', label: 'of food is wasted', color: '#FF6B35' },
-              { stat: '92M', label: 'tons of textile waste', color: '#FF4D4D' },
-              { stat: '50M', label: 'tons of e-waste', color: '#BF5AF2' },
+              { stat: t('prob_stat1_title'), label: t('prob_stat1_desc'), color: '#FF6B35' },
+              { stat: t('prob_stat2_title'), label: t('prob_stat2_desc'), color: '#FF4D4D' },
+              { stat: t('prob_stat3_title'), label: t('prob_stat3_desc'), color: '#BF5AF2' },
             ].map((item, i) => (
               <div key={i} className="glass rounded-xl p-6 border-t border-accent-red/10 shadow-[0_10px_30px_rgba(255,77,77,0.05)]">
                 <span className="font-heading text-4xl font-black block" style={{ color: item.color }}>
@@ -62,26 +69,26 @@ export default function ProblemStatement() {
           </div>
         </motion.div>
 
-        {/* Solution Section */}
-        <motion.div
-          style={{ opacity: solutionOpacity, y: solutionY, scale: solutionScale }}
-          className="relative z-10 flex flex-col items-center justify-center text-center"
-        >
-          <span className="inline-block text-xs font-heading font-semibold tracking-[4px] uppercase text-neon-green mb-4 px-4 py-1 rounded-full glass border border-neon-green/20 shadow-[0_0_15px_rgba(57,255,20,0.2)]">
-            The Solution
-          </span>
-          <h2 className="font-heading text-4xl lg:text-6xl font-bold mt-4 leading-tight drop-shadow-[0_0_15px_rgba(57,255,20,0.3)]">
-            Enter the <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-green to-accent-teal">Circular Economy</span>
+          {/* Solution Section */}
+          <motion.div
+            style={{ opacity: solutionOpacity, y: solutionY, scale: solutionScale }}
+            className="absolute inset-0 flex flex-col items-center justify-center text-center px-4"
+          >
+            <span className="inline-block text-xs font-heading font-semibold tracking-[4px] uppercase text-neon-green mb-4 px-4 py-1 rounded-full bg-neon-green/10 border border-neon-green/20 shadow-[0_0_15px_rgba(57,255,20,0.2)]">
+              {t('prob_sol_badge')}
+            </span>
+            <h2 className="font-heading text-4xl lg:text-6xl font-bold mt-4 leading-tight">
+              {t('prob_sol_title1')} <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-green to-accent-teal drop-shadow-[0_0_15px_rgba(57,255,20,0.3)]">{t('prob_sol_title2')}</span>
           </h2>
           <p className="text-lg text-muted mt-6 max-w-2xl mx-auto leading-relaxed">
-            We are flipping the system. By actively rewarding reuse, responsible reselling, and sustainable choices, we turn waste back into wealth.
+            {t('prob_sol_desc')}
           </p>
 
           <div className="grid sm:grid-cols-3 gap-6 mt-12 w-full max-w-4xl mx-auto">
             {[
-              { title: 'Track Carbon', icon: '🌍', desc: 'See the exact impact of every transaction.' },
-              { title: 'Trade Smart', icon: '♻️', desc: 'Buy and sell refurbished or upcycled goods.' },
-              { title: 'Earn Elite Status', icon: '💎', desc: 'Unlock gold tiers simply by saving the planet.' },
+              { title: t('prob_ben1_title'), icon: '🌍', desc: t('prob_ben1_desc') },
+              { title: t('prob_ben2_title'), icon: '♻️', desc: t('prob_ben2_desc') },
+              { title: t('prob_ben3_title'), icon: '💎', desc: t('prob_ben3_desc') },
             ].map((item, i) => (
                <div key={i} className="glass rounded-2xl p-8 border border-neon-green/10 hover:border-neon-green/30 transition-colors shadow-[inset_0_0_20px_rgba(57,255,20,0.02)] group hover:-translate-y-1 duration-300">
                  <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">{item.icon}</div>
@@ -90,7 +97,8 @@ export default function ProblemStatement() {
                </div>
             ))}
           </div>
-        </motion.div>
+          </motion.div>
+        </div>
       </div>
     </section>
   );

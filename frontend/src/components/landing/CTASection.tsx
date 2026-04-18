@@ -2,8 +2,10 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function CTASection() {
+  const { t } = useLanguage();
   return (
     <section className="py-24 relative overflow-hidden">
       {/* Background ambient glow */}
@@ -37,18 +39,18 @@ export default function CTASection() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-green opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-neon-green"></span>
               </span>
-              The Future is Circular
+              {t('cta_badge')}
             </motion.span>
 
             <h2 className="font-heading text-5xl lg:text-7xl font-bold max-w-4xl mx-auto leading-[1.1] tracking-tight drop-shadow-2xl">
-              Stop Wasting.<br />
+              {t('cta_title1')}<br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-green via-accent-teal to-neon-green bg-[length:200%_auto] animate-[gradient-x_3s_ease_infinite]">
-                Start Earning.
+                {t('cta_title2')}
               </span>
             </h2>
 
             <p className="text-muted-dim text-lg mt-8 max-w-2xl mx-auto leading-relaxed border-l-2 border-neon-green/20 pl-6">
-              Join thousands of forward-thinking consumers turning their eco-friendly choices into verifiable real-world value.
+              {t('cta_desc')}
             </p>
 
             <div className="flex flex-col sm:flex-row justify-center items-center gap-6 mt-12">
@@ -57,27 +59,27 @@ export default function CTASection() {
                 className="group relative inline-flex justify-center items-center gap-3 w-full sm:w-auto px-10 py-5 font-heading text-sm font-black tracking-[0.1em] uppercase bg-neon-green text-black rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(57,255,20,0.3)] hover:shadow-[0_0_50px_rgba(57,255,20,0.5)] transition-all duration-300 hover:-translate-y-1"
               >
                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                <span className="relative z-10">Join the Circular Economy</span>
+                <span className="relative z-10">{t('cta_btn1')}</span>
               </Link>
               
               <Link
                 href="/marketplace"
                 className="group inline-flex justify-center items-center w-full sm:w-auto px-10 py-5 font-heading text-sm font-bold tracking-[0.1em] uppercase text-white glass border border-white/10 rounded-2xl hover:border-accent-teal/50 hover:bg-white/5 transition-all duration-300"
               >
-                Browse Marketplace
+                {t('cta_btn2')}
               </Link>
             </div>
 
             {/* Trust strip */}
             <div className="mt-16 pt-8 border-t border-white/5 flex flex-wrap justify-center items-center gap-6 sm:gap-12 text-muted-dim text-xs font-heading font-medium tracking-[0.15em] uppercase">
               <span className="flex items-center gap-2">
-                <span className="text-neon-green">✓</span> Verified Impact
+                <span className="text-neon-green">✓</span> {t('cta_trust1')}
               </span>
               <span className="flex items-center gap-2">
-                <span className="text-accent-teal">✓</span> Secure Blockchain
+                <span className="text-accent-teal">✓</span> {t('cta_trust2')}
               </span>
               <span className="flex items-center gap-2">
-                <span className="text-accent-purple">✓</span> Premium Rewards
+                <span className="text-accent-purple">✓</span> {t('cta_trust3')}
               </span>
             </div>
           </div>

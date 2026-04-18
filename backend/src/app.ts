@@ -22,6 +22,13 @@ import adminRoutes from './routes/admin';
 import meRoutes from './routes/me'; // Protected dummy route
 import membershipRoutes from './routes/membership';
 import checkoutRoutes from './routes/checkout';
+import uploadRoutes from './routes/upload';
+import chatRoutes from './routes/chat';
+import notificationRoutes from './routes/notifications';
+import path from 'path';
+
+// Serve uploaded images statically
+app.use('/images', express.static(path.join(__dirname, 'images')));
 
 app.use('/api/users', userRoutes);
 app.use('/api/listings', listingsRoutes);
@@ -34,6 +41,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/me', meRoutes);
 app.use('/api/membership', membershipRoutes);
 app.use('/api/checkout', checkoutRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use((req, res) => {

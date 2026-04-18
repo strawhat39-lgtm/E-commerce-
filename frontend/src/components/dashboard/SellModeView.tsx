@@ -1,25 +1,100 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User } from '@/types';
 import { supabase } from '@/utils/supabase';
-import { fetchFromApi } from '@/utils/api';
+import { API_URL, fetchFromApi } from '@/utils/api';
 import imageCompression from 'browser-image-compression';
+import { useCurrency } from '@/context/CurrencyContext';
 
 interface SellModeViewProps {
   user: User;
   onAction?: (points: number) => void;
+  mode?: 'sell' | 'rent' | 'swap';
 }
 
-export default function SellModeView({ user, onAction }: SellModeViewProps) {
+export default function SellModeView({ user, onAction, mode = 'sell' }: SellModeViewProps) {
+  const { currency } = useCurrency();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
 
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('Apparel');
+  const [category, setCategory] = useState('Apparel & Fashion');
   const [conditionDetails, setConditionDetails] = useState('');
+  const [price, setPrice] = useState('');
+  const [sellerName, setSellerName] = useState(user.name || '');
+  const [sellerWhatsapp, setSellerWhatsapp] = useState('');
+  const [sellerLocation, setSellerLocation] = useState('');
+
+  const [activeListings, setActiveListings] = useState<any[]>([]);
+  const [listingCounts, setListingCounts] = useState({ buy: 0, rent: 0, swap: 0 });
+  const [publishStatus, setPublishStatus] = useState<'pending' | 'error' | null>(null);
+
+  const fetchActiveListings = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session || !session.user) return;
+    
+    const { data, error } = await supabase
+      .from('item_listings')
+      .select('*')
+      .eq('owner_id', session.user.id)
+      .order('created_at', { ascending: false });
+
+    if (data && !error) {
+      setActiveListings(data);
+      setListingCounts({
+        buy: data.filter(i => i.listing_type === 'buy').length,
+        rent: data.filter(i => i.listing_type === 'rent').length,
+        swap: data.filter(i => i.listing_type === 'swap').length,
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchActiveListings();
+
+    const setupListener = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+
+      const channelId = `dashboard_listings_${Date.now()}_${Math.random()}`;
+      const channel = supabase
+        .channel(channelId)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'item_listings', filter: `owner_id=eq.${session.user.id}` },
+          async (payload) => {
+            fetchActiveListings();
+            
+            // Auto payout 250 coins strictly upon approval transition
+            if (payload.eventType === 'UPDATE') {
+              if (payload.old.status === 'pending' && payload.new.status === 'approved') {
+                try {
+                  const { data: profile } = await supabase.from('profiles').select('eco_points').eq('id', session.user.id).single();
+                  if (profile) {
+                     await supabase.from('profiles').update({ eco_points: profile.eco_points + 250 }).eq('id', session.user.id);
+                     if (onAction) onAction(250);
+                  }
+                } catch (e) { console.error(e) }
+              }
+            }
+          }
+        )
+        .subscribe();
+        
+      return () => { supabase.removeChannel(channel); };
+    };
+    setupListener();
+  }, []);
+
+  const handleDeleteListing = async (id: string, title: string) => {
+    if (window.confirm(`Are you sure you want to permanently delete "${title}"?`)) {
+      await supabase.from('item_listings').delete().eq('id', id);
+      // Realtime listener triggers local re-fetch automatically!
+    }
+  };
 
   const handlePublish = async () => {
     if (!title || isPublishing) return;
@@ -54,37 +129,45 @@ export default function SellModeView({ user, onAction }: SellModeViewProps) {
           }
         }
 
-        const fileName = `${Date.now()}_${file.name.replace(/\s+/g, '-')}`;
-        
-        const { data, error } = await supabase.storage.from('listings').upload(fileName, file);
+        const formData = new FormData();
+        formData.append('media', file, file.name);
 
-        if (!error && data) {
-          const { data: { publicUrl } } = supabase.storage.from('listings').getPublicUrl(data.path);
-          imageUrl = publicUrl;
+        const uploadRes = await fetch(`${API_URL}/upload`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          imageUrl = uploadData.url;
         } else {
-          console.error("Storage upload error:", error);
+          console.error("Storage upload error:", await uploadRes.text());
         }
       }
 
-      await fetchFromApi('/listings', {
-        method: 'POST',
-        body: JSON.stringify({
-          title,
-          description: conditionDetails,
-          category,
-          condition: 'good',
-          listing_type: 'buy',
-          image_url: imageUrl,
-          price: 0
-        })
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      await supabase.from('item_listings').insert({
+        owner_id: session?.user?.id,
+        title,
+        description: `${conditionDetails}\n\n[S_NAME:${sellerName}]\n[S_WA:${sellerWhatsapp}]\n[S_LOC:${sellerLocation}]\n[PRICE:${parseFloat(price) || 0}]`,
+        category,
+        condition: 'good',
+        listing_type: mode === 'sell' ? 'buy' : mode,
+        image_url: imageUrl,
+        status: 'pending'
       });
 
       setMediaFiles([]);
       setTitle('');
       setConditionDetails('');
-      if (onAction) onAction(250);
+      setPublishStatus('pending');
+      setTimeout(() => setPublishStatus(null), 6000);
+      // NOTE: We do not call onAction(250) here anymore. It's handled by Realtime Approval.
     } catch (e) {
       console.error("Publishing error:", e);
+      setPublishStatus('error');
+      setTimeout(() => setPublishStatus(null), 4000);
     } finally {
       setIsPublishing(false);
     }
@@ -119,6 +202,26 @@ export default function SellModeView({ user, onAction }: SellModeViewProps) {
 
   return (
     <div className="space-y-6 pb-10">
+      {/* Publish Status Banner */}
+      {publishStatus === 'pending' && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="p-4 rounded-2xl bg-[#FFC800]/10 border border-[#FFC800]/30 flex items-center gap-3">
+          <span className="text-2xl">⏳</span>
+          <div>
+            <span className="font-heading font-bold text-sm text-[#FFC800] block">Listing Submitted — Pending Admin Approval</span>
+            <span className="text-xs text-muted">Your listing will appear in the marketplace once an admin approves it. You&apos;ll earn 250 eco coins upon approval!</span>
+          </div>
+        </motion.div>
+      )}
+      {publishStatus === 'error' && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center gap-3">
+          <span className="text-2xl">❌</span>
+          <div>
+            <span className="font-heading font-bold text-sm text-red-400 block">Publishing Failed</span>
+            <span className="text-xs text-muted">Something went wrong. Please try again.</span>
+          </div>
+        </motion.div>
+      )}
+
       {/* Seller Stats Row */}
       <motion.div 
         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} 
@@ -143,7 +246,9 @@ export default function SellModeView({ user, onAction }: SellModeViewProps) {
         {/* Left: Add Product Form */}
         <motion.div initial={{ opacity: 0, x: -15 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="lg:col-span-2 glass rounded-2xl p-6">
           <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
-            <h3 className="font-heading text-lg font-bold">List a New Item</h3>
+            <h3 className="font-heading text-lg font-bold">
+              {mode === 'sell' ? 'List a New Item' : mode === 'rent' ? 'Offer for Rent' : 'Propose a Swap'}
+            </h3>
             <span className="px-2 py-1 rounded bg-neon-green/10 text-neon-green text-[10px] uppercase font-bold tracking-wider">Fast Listing</span>
           </div>
 
@@ -190,25 +295,94 @@ export default function SellModeView({ user, onAction }: SellModeViewProps) {
               )}
             </div>
 
-            {/* Inputs */}
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Item Title</label>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} type="text" placeholder="e.g. Vintage Leather Jacket" className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors" />
+                <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">
+                  {mode === 'swap' ? 'What are you swapping?' : 'Item Title'}
+                </label>
+                <input value={title} onChange={(e) => setTitle(e.target.value)} type="text" placeholder={mode === 'swap' ? 'e.g. Vintage Camera' : "e.g. Vintage Leather Jacket"} className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Category</label>
                 <select value={category} onChange={(e) => setCategory(e.target.value)} title="category" className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors appearance-none">
-                  <option>Apparel</option>
+                  <option>Apparel & Fashion</option>
                   <option>Electronics</option>
                   <option>Furniture</option>
+                  <option>Tools & Hardware</option>
+                  <option>Rescued Food</option>
+                  <option>Raw Materials (Upcycle)</option>
+                  <option>Textile Waste</option>
+                  <option>Electronic Waste</option>
                 </select>
               </div>
             </div>
 
+            {(mode === 'sell' || mode === 'swap') && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">
+                  {mode === 'swap' ? `Estimated Value (${currency === 'USD' ? '$' : '₹'})` : `Selling Price (${currency === 'USD' ? '$' : '₹'})`}
+                </label>
+                <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" placeholder="500" className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors" />
+              </div>
+            )}
+
+            {mode === 'swap' && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">What you want in return</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Gardening Tools, Books..."
+                  className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors"
+                />
+              </div>
+            )}
+
+            {mode === 'rent' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Price Per Period ({currency === 'USD' ? '$' : '₹'})</label>
+                  <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" placeholder="15" className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Period</label>
+                  <select className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors">
+                    <option>per day</option>
+                    <option>per week</option>
+                    <option>per month</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Condition & Details</label>
               <textarea value={conditionDetails} onChange={(e) => setConditionDetails(e.target.value)} placeholder="Describe the item's history and condition..." rows={3} className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors resize-none" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Public Seller Name</label>
+                <input value={sellerName} onChange={(e) => setSellerName(e.target.value)} type="text" placeholder="Your display name for buyers" className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Contact (WhatsApp for Buyers)</label>
+                <input value={sellerWhatsapp} onChange={(e) => setSellerWhatsapp(e.target.value)} type="tel" placeholder="+91 00000 00000" className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-heading uppercase tracking-widest text-muted-dim">Pickup Location</label>
+              <input value={sellerLocation} onChange={(e) => setSellerLocation(e.target.value)} type="text" placeholder="e.g. Central Park (Meet at West Gate)" className="w-full bg-surface-high border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-neon-green/50 transition-colors" />
+            </div>
+
+            <div className="bg-neon-green/10 border border-neon-green/20 rounded-xl p-4 flex gap-3 text-neon-green items-start">
+              <span className="text-xl">⚠️</span>
+              <div>
+                <p className="font-heading font-bold text-[11px] tracking-widest uppercase mb-1">Face to Face Only</p>
+                <p className="text-xs opacity-80 leading-relaxed">
+                  You must communicate with buyers, renters, and swappers in person to manage interactions and exchanges safely. We currently do not provide logistics or shipping.
+                </p>
+              </div>
             </div>
 
             <button 
@@ -222,10 +396,13 @@ export default function SellModeView({ user, onAction }: SellModeViewProps) {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Publishing & Scoring...
+                  Processing & Scoring...
                 </>
               ) : (
-                'Publish & Earn 250 Pts 🚀'
+                <>
+                  <span className="block">{mode === 'sell' ? 'Publish Item' : mode === 'rent' ? 'List for Rent' : 'Propose Swap'} 🚀</span>
+                  <span className="block text-[10px] text-black/60 tracking-normal capitalize mt-0.5 animate-pulse">Publish & Earn 250 Coins</span>
+                </>
               )}
             </button>
           </div>
@@ -258,20 +435,45 @@ export default function SellModeView({ user, onAction }: SellModeViewProps) {
           </motion.div>
 
           {/* Active Listings Mini-widget */}
-          <motion.div initial={{ opacity: 0, x: 15 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="glass rounded-2xl p-6">
+          <motion.div initial={{ opacity: 0, x: 15 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="glass rounded-2xl p-6 flex flex-col flex-1">
             <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-3">
               <h3 className="font-heading text-sm font-semibold tracking-widest uppercase">Active Listings</h3>
-              <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold">2</span>
+              <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold">{activeListings.length}</span>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                 <span className="truncate max-w-[150px]">Vintage Denim</span>
-                 <span className="text-neon-green font-bold">3 bids</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                 <span className="truncate max-w-[150px]">Toaster Oven</span>
-                 <span className="text-muted-dim text-xs">Waiting</span>
-              </div>
+            
+            <div className="flex text-[10px] uppercase font-bold tracking-widest text-muted-dim gap-3 mb-4">
+              <span>Sell: {listingCounts.buy}</span>
+              <span>Rent: {listingCounts.rent}</span>
+              <span>Swap: {listingCounts.swap}</span>
+            </div>
+
+            <div className="space-y-3 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
+              {activeListings.length === 0 ? (
+                <div className="text-sm text-center text-muted-dim py-4">No active listings</div>
+              ) : activeListings.map(item => (
+                <div key={item.id} className="flex items-center justify-between text-sm group p-2 rounded-lg hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
+                   <div className="flex flex-col min-w-0 flex-1 pr-3">
+                     <span className="truncate block font-semibold">{item.title}</span>
+                     <span className="text-[10px] text-muted-dim tracking-wider uppercase mt-0.5">{item.listing_type}</span>
+                   </div>
+                   <div className="flex items-center gap-3">
+                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider
+                        ${item.status === 'pending' ? 'bg-[#FFC800]/10 text-[#FFC800] border border-[#FFC800]/30' : 
+                          item.status === 'approved' ? 'bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/30' : 
+                          'bg-red-500/10 text-red-500 border border-red-500/30'}
+                     `}>
+                       {item.status || 'available'}
+                     </span>
+                     <button
+                        onClick={() => handleDeleteListing(item.id, item.title)}
+                        className="p-1.5 rounded bg-transparent text-muted-dim hover:text-white hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all opacity-0 group-hover:opacity-100"
+                        title="Delete Listing"
+                     >
+                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6"/></svg>
+                     </button>
+                   </div>
+                </div>
+              ))}
             </div>
           </motion.div>
         </div>

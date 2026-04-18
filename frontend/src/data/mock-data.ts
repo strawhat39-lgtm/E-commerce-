@@ -12,7 +12,7 @@ export const currentUser: User = {
   streak: 7,
   joinedDate: '2024-09-15',
   badges: [],
-  membershipTier: 'gold',
+  membershipTier: 'bronze',
   earnings: 1250,
   savings: 430,
   trustRating: 4.9,

@@ -9,21 +9,33 @@ import { supabase } from '@/utils/supabase';
 import BuyModeView from '@/components/dashboard/BuyModeView';
 import SellModeView from '@/components/dashboard/SellModeView';
 import MembershipView from '@/components/dashboard/MembershipView';
+import DashboardAIInsights from '@/components/dashboard/DashboardAIInsights';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [viewMode, setViewMode] = useState<'overview' | 'buy' | 'sell' | 'membership'>('overview');
+  const [viewMode, setViewMode] = useState<'overview' | 'buy' | 'sell' | 'rent' | 'swap' | 'membership'>('overview');
+  const [initialLaunchTier, setInitialLaunchTier] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState(mockUser);
   const [badges, setBadges] = useState(mockBadges);
   const [recentActivity, setRecentActivity] = useState(mockActivity);
   const [weeklyData, setWeeklyData] = useState(mockWeekly);
   const [cartItems, setCartItems] = useState(mockCart);
   const [listings, setListings] = useState(mockListings);
+  const [procuredItems, setProcuredItems] = useState<any[]>([]);
   
   const [activityScore, setActivityScore] = useState(currentUser.score);
 
   useEffect(() => {
     async function load() {
+      // Read initial UI states from URL (bypass Next Router to avoid suspense boundary requirement)
+      if (typeof window !== 'undefined') {
+        const search = new URLSearchParams(window.location.search);
+        const urlView = search.get('view') as any;
+        const urlTier = search.get('tier');
+        if (urlView) setViewMode(urlView);
+        if (urlTier) setInitialLaunchTier(urlTier);
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         router.push('/login');
@@ -39,29 +51,53 @@ export default function DashboardPage() {
 
       const userId = meRes.profile.id; 
       
-      // We don't fetch from /users/ anymore since /me provides what we need, 
-      // but let's just use what we have in meRes.
-      let score = meRes.profile.eco_points || mockUser.score;
-      setActivityScore(score);
+      const pKey = `reuse_mart_purchases_${userId}`;
+      setProcuredItems(window.localStorage ? JSON.parse(window.localStorage.getItem(pKey) || '[]') : []);
+
+      // Seed dashboard mock data variations deterministically without touching backend
+      const hash = userId.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
+      setRecentActivity(mockActivity.filter((_, i) => (i + hash) % 2 === 0));
+      setWeeklyData(mockWeekly.map(w => ({ day: w.day, co2: Math.max(0, w.co2 + (hash % 150) - 75) })));
       
-      const metrics = await fetchFromApi(`/impact/user/${userId}/metrics`);
-        setCurrentUser(prev => ({
-            ...prev,
-            name: meRes.profile.full_name || prev.name,
-            score: score,
-            co2Saved: metrics?.total_carbon_saved_kg || prev.co2Saved,
-            itemsReused: metrics?.items_reused || prev.itemsReused,
-            wasteDiverted: metrics?.water_saved_liters || prev.wasteDiverted,
-        }));
+      // Pull Live Supabase Telemetry natively
+      const [{ data: userMetrics }, { count: rentSwapCount }, { count: foodRescued }, { count: sellSwapCount }] = await Promise.all([
+        supabase.from('sustainability_metrics').select('*').eq('user_id', userId).single(),
+        supabase.from('item_listings').select('*', { count: 'exact', head: true }).eq('owner_id', userId).in('listing_type', ['rent', 'swap']),
+        supabase.from('food_listings').select('*', { count: 'exact', head: true }).eq('donor_id', userId),
+        supabase.from('item_listings').select('*', { count: 'exact', head: true }).eq('owner_id', userId).in('listing_type', ['sell', 'swap'])
+      ]);
+
+      const realScore = meRes.profile.eco_points || 0;
+      setActivityScore(realScore);
+      
+      setCurrentUser(prev => ({
+          ...prev,
+          name: meRes.profile.full_name || prev.name,
+          score: realScore,
+          membershipTier: meRes.profile.membership_tier || 'bronze',
+          co2Saved: userMetrics?.total_carbon_saved_kg || 0,
+          itemsReused: rentSwapCount || 0,
+          foodRescued: foodRescued || 0,
+          wasteDiverted: (sellSwapCount || 0) * 5.2, // Rough kg estimate per item diverted 
+      }));
+
+      // Setup Realtime Listener for seamless UI refresh
+      const channel = supabase.channel(`dashboard_metrics_${Date.now()}_${Math.random()}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'item_listings' }, () => load())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'food_listings' }, () => load())
+        .subscribe();
 
         const bdg = await fetchFromApi(`/impact/user/${userId}/badges`);
         if (bdg && bdg.length > 0) {
           const formattedBadges = bdg.map((b: any) => ({
-            id: b.id, name: b.reward_badges?.badge_name || 'Badge', description: b.reward_badges?.description || '', icon: b.reward_badges?.icon_url || '🎖️', tier: 'silver', earned: true
+            id: b.id, name: b.reward_badges?.badge_name || 'Eco Beginner', description: b.reward_badges?.description || '', icon: b.reward_badges?.icon_url || '🌱', tier: 'silver', earned: true
           }));
-          setBadges([...formattedBadges]); // Removed mock data slice
+          setBadges([{ id: 'mock2', name: 'Waste Warrior', icon: '♻️', description: 'Saved 10 items from landfill', tier: 'gold', progress: 80, earned: false }, ...formattedBadges]);
         } else {
-          setBadges([]); // Start empty if no badges
+          setBadges([
+            { id: 'b1', name: 'Eco Beginner', icon: '🌱', description: 'Joined the platform', tier: 'bronze', earned: true },
+            { id: 'b2', name: 'Waste Warrior', icon: '♻️', description: 'Saved 10 items from landfill', tier: 'gold', progress: 80, earned: false }
+          ]); 
         }
 
         const cart = await fetchFromApi(`/cart/user/${userId}`);
@@ -75,12 +111,29 @@ export default function DashboardPage() {
         
         const lst = await fetchFromApi(`/listings`);
         if (lst && lst.length > 0) {
-          const fListings = lst.map((i: any) => ({
-            ...mockListings[0], id: i.id, title: i.title, type: i.listing_type || 'buy', category: i.category, createdAt: i.created_at
-          }));
+          const fListings = lst.map((i: any) => {
+            let priceMatch = i.description?.match(/\[PRICE:(.*?)\]/);
+            let overridePrice = priceMatch ? parseFloat(priceMatch[1]) : i.price;
+            let sellerMatch = i.description?.match(/\[S_NAME:(.*?)\]/);
+            let overrideName = sellerMatch ? sellerMatch[1] : null;
+
+            return {
+              ...mockListings[0], 
+              id: i.id, 
+              title: i.title, 
+              type: i.listing_type || 'buy', 
+              category: i.category, 
+              createdAt: i.created_at,
+              userName: overrideName && overrideName.trim() !== '' ? overrideName : (i.profiles?.full_name || 'User'),
+              price: i.listing_type === 'buy' || !i.listing_type ? (overridePrice || mockListings[0].price) : mockListings[0].price,
+              rentPrice: i.listing_type === 'rent' ? (overridePrice || mockListings[0].rentPrice) : mockListings[0].rentPrice,
+              estimatedValue: i.listing_type === 'swap' ? (overridePrice || mockListings[0].estimatedValue) : mockListings[0].estimatedValue,
+              description: i.description || ''
+            };
+          }).filter((_: any, i: number) => (i + hash) % 3 !== 0); // Scramble data
           setListings(fListings);
         } else {
-          setListings([]);
+          setListings(mockListings.filter((_: any, i: number) => (i + hash) % 2 === 0));
         }
     }
     load();
@@ -91,8 +144,8 @@ export default function DashboardPage() {
   const savings = totalCarbon - altCarbon;
   const maxWeekly = Math.max(...weeklyData.map((d) => d.co2));
 
-  // Determine tier dynamically from the global activityScore
-  const derivedTier = activityScore >= 2000 ? 'gold' : activityScore >= 500 ? 'silver' : 'bronze';
+  // Determine tier dynamically from the global activityScore OR explicit user override
+  const derivedTier = currentUser.membershipTier || (activityScore >= 2000 ? 'gold' : activityScore >= 500 ? 'silver' : 'bronze');
 
   const getTierColor = (tier: string) => {
     switch (tier) {
@@ -112,7 +165,54 @@ export default function DashboardPage() {
     <div className="min-h-screen pt-24 pb-16">
       <div className="section-container">
         {/* Header & Mode Toggles */}
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-20">
+        <AnimatePresence mode="wait">
+          {viewMode !== 'overview' && viewMode !== 'membership' && procuredItems.filter(i => i.type === viewMode || (viewMode === 'buy' && !['rent', 'swap'].includes(i.type))).length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8 relative z-20">
+              <h3 className="font-heading text-xl font-bold mb-4 flex items-center gap-2 text-neon-green">
+                <span>📦</span> Your Procured {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}s
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {procuredItems.filter(i => i.type === viewMode || (viewMode === 'buy' && !['rent', 'swap'].includes(i.type))).map((item, idx) => (
+                  <div key={idx} className="glass rounded-2xl p-4 flex gap-4 border border-neon-green/20 relative items-center shadow-[0_0_20px_rgba(57,255,20,0.05)]">
+                    <img src={item.image} alt={item.title} className="w-20 h-20 rounded-xl object-cover bg-white/5" />
+                    <div className="flex-1 pr-12">
+                      <h4 className="font-heading font-bold text-lg">{item.title}</h4>
+                      <div className="text-xs text-muted-dim font-mono mb-1">📍 {item.sellerLocation}</div>
+                      <div className="text-[10px] text-muted-dim font-mono mb-2">🕒 Acquired {new Date(item.purchasedAt).toLocaleDateString()}</div>
+                      
+                      {/* Self-Listing Indicator */}
+                      {(item.ownerId === currentUser.id) && (
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-neon-green/10 border border-neon-green/20 text-[9px] font-heading font-bold uppercase text-neon-green tracking-wider">
+                           <span>👤</span> Your Own Listing
+                        </div>
+                      )}
+                    </div>
+                    
+                    {item.ownerId !== currentUser.id ? (
+                      item.sellerWhatsapp ? (
+                        <a href={`https://wa.me/${item.sellerWhatsapp}?text=Hi! I procured your ${item.title} on Reuse_mart!`} target="_blank" rel="noopener noreferrer" className="absolute top-1/2 -translate-y-1/2 right-4 bg-[#25D366] text-white p-2.5 rounded-full hover:scale-110 transition-transform shadow-[0_0_15px_rgba(37,211,102,0.3)]" title={`Contact ${item.sellerName || 'Seller'} on WhatsApp`}>
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
+                          </svg>
+                        </a>
+                      ) : (
+                        <div className="absolute top-1/2 -translate-y-1/2 right-4 bg-white/5 text-muted-dim p-2 rounded-full text-[10px] font-heading tracking-wider" title="Seller contact not available">
+                          📞 N/A
+                        </div>
+                      )
+                    ) : (
+                      <div className="absolute top-1/2 -translate-y-1/2 right-4 bg-white/5 text-muted p-2.5 rounded-full" title="You are the seller of this item">
+                         👤
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
           <div className="flex items-center gap-4">
             <div className="relative">
                {/* Animated Circular Progress Badge around avatar */}
@@ -143,8 +243,8 @@ export default function DashboardPage() {
           {/* Header Controls */}
           <div className="flex flex-col md:flex-row items-end gap-4 relative z-20">
             {/* Mode Toggles */}
-            <div className="flex bg-surface-high/50 p-1 rounded-xl glass border border-white/5 relative z-20">
-            {(['overview', 'buy', 'sell', 'membership'] as const).map((mode) => (
+            <div className="flex bg-surface-high/50 p-1 rounded-xl glass border border-white/5 relative z-20 flex-wrap">
+            {(['overview', 'buy', 'sell', 'rent', 'swap', 'membership'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
@@ -203,6 +303,14 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Next Generation Semantic AI Injection */}
+              <DashboardAIInsights metrics={{
+                  co2Saved: currentUser.co2Saved,
+                  itemsReused: currentUser.itemsReused,
+                  foodRescued: currentUser.foodRescued,
+                  wasteDiverted: currentUser.wasteDiverted
+              }} />
 
               <div className="grid lg:grid-cols-3 gap-6">
                 {/* Left: Score + Carbon + Weekly */}
@@ -295,7 +403,7 @@ export default function DashboardPage() {
 
                   {/* Weekly Trend */}
                   <div className="glass rounded-2xl p-6">
-                    <h3 className="font-heading text-sm font-semibold tracking-widest uppercase text-muted-dim mb-5">Weekly Impact</h3>
+                    <h3 className="font-heading text-sm font-semibold tracking-widest uppercase text-muted-dim mb-5">Your Impact This Week</h3>
                     <div className="flex items-end gap-3 h-40">
                       {weeklyData.map((d, i) => (
                         <div key={i} className="flex-1 flex flex-col items-center gap-2">
@@ -402,13 +510,25 @@ export default function DashboardPage() {
 
           {viewMode === 'sell' && (
             <motion.div key="sell" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-              <SellModeView user={{...currentUser, score: activityScore}} onAction={handleAction} />
+              <SellModeView mode="sell" user={{...currentUser, score: activityScore}} onAction={handleAction} />
+            </motion.div>
+          )}
+
+          {viewMode === 'rent' && (
+            <motion.div key="rent" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <SellModeView mode="rent" user={{...currentUser, score: activityScore}} onAction={handleAction} />
+            </motion.div>
+          )}
+
+          {viewMode === 'swap' && (
+            <motion.div key="swap" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <SellModeView mode="swap" user={{...currentUser, score: activityScore}} onAction={handleAction} />
             </motion.div>
           )}
 
           {viewMode === 'membership' && (
             <motion.div key="membership" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-              <MembershipView user={currentUser} />
+              <MembershipView user={currentUser} initialLaunchTier={initialLaunchTier} />
             </motion.div>
           )}
         </AnimatePresence>

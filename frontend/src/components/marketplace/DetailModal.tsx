@@ -4,6 +4,7 @@ import { ListingItem } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { addToCart } from '@/utils/cart';
+import { useCurrency } from '@/context/CurrencyContext';
 
 const typeConfig: Record<string, { color: string; actionLabel: string }> = {
   swap: { color: '#39FF14', actionLabel: 'Request Swap' },
@@ -21,17 +22,28 @@ export default function DetailModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { formatPrice } = useCurrency();
 
   if (!item) return null;
   const config = typeConfig[item.type];
 
   // Specific buy handlers
   const handleAddToCart = () => {
+    if (!localStorage.getItem('reuse_mart_current_user')) {
+      alert('Please log in first to use the cart!');
+      router.push('/login');
+      return;
+    }
     addToCart(item);
     alert('Added to cart!');
   };
 
   const handleBuyNow = () => {
+    if (!localStorage.getItem('reuse_mart_current_user')) {
+      alert('Please log in first to purchase or reserve items!');
+      router.push('/login');
+      return;
+    }
     addToCart(item);
     router.push('/cart');
   };
@@ -56,7 +68,7 @@ export default function DetailModal({
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-lg glass rounded-2xl overflow-hidden z-10"
+            className="relative w-full max-w-lg glass rounded-2xl overflow-hidden z-10 max-h-[90vh] flex flex-col"
           >
             {/* Top accent */}
             <div className="h-1" style={{ background: `linear-gradient(90deg, ${config.color}, transparent)` }} />
@@ -70,10 +82,10 @@ export default function DetailModal({
             </button>
 
             {/* Image */}
-            <div className="relative h-56 bg-surface-high flex items-center justify-center overflow-hidden">
-              {item.image ? (
+            <div className="relative h-56 bg-surface-high flex items-center justify-center overflow-hidden flex-shrink-0">
+              {(item.image_url || item.imageUrl || item.image) ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                <img src={item.image_url || item.imageUrl || item.image} alt={item.title} className="w-full h-full object-contain bg-black/40 backdrop-blur-sm" />
               ) : (
                 <span className="text-6xl opacity-20">
                   {item.type === 'swap' ? '🔄' : item.type === 'rent' ? '📦' : item.type === 'food' ? '🍱' : '🔧'}
@@ -82,7 +94,7 @@ export default function DetailModal({
             </div>
 
             {/* Content */}
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
               {/* Type + Category */}
               <div className="flex items-center gap-2 mb-3">
                 <span
@@ -101,8 +113,22 @@ export default function DetailModal({
                 )}
               </div>
 
-              <h2 className="font-heading text-xl font-bold mb-2">{item.title}</h2>
-              <p className="text-sm text-muted leading-relaxed mb-5">{item.description}</p>
+              <div className="flex items-start justify-between mb-2">
+                <h2 className="font-heading text-xl font-bold pr-2">{item.title}</h2>
+                <div className="flex-shrink-0 relative group mt-2">
+                  <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`PRODUCT_ID:${item.id}`)}&color=000000&bgcolor=FFFFFF`} 
+                      alt="Product Scanner QR" 
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded bg-neon-green p-1 cursor-pointer hover:scale-[1.05] shadow-[0_0_15px_#39FF14] transition-all"
+                  />
+                  <div className="absolute -bottom-8 right-0 bg-black border border-white/10 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 text-neon-green font-bold">
+                     Use Camera to Scan!
+                  </div>
+                </div>
+              </div>
+              <p className="text-sm text-muted leading-relaxed mb-5">
+                {item.description?.replace(/\[S_NAME:.*?\]|\[S_WA:.*?\]|\[S_LOC:.*?\]/g, '')}
+              </p>
 
               {/* Details grid */}
               <div className="grid grid-cols-2 gap-3 mb-5">
@@ -118,8 +144,14 @@ export default function DetailModal({
                 {item.swapFor && (
                   <DetailRow label="Looking For" value={item.swapFor} />
                 )}
+                {item.price && !item.rentPrice && !item.estimatedValue && (
+                  <DetailRow label="Price" value={`${formatPrice(item.price)}`} />
+                )}
+                {item.estimatedValue && (
+                  <DetailRow label="Estimated Value" value={`${formatPrice(item.estimatedValue)}`} />
+                )}
                 {item.rentPrice && (
-                  <DetailRow label="Rent Rate" value={`$${item.rentPrice} ${item.rentPeriod}`} />
+                  <DetailRow label="Rent Rate" value={`${formatPrice(item.rentPrice)} / ${item.rentPeriod?.replace('per ', '') || 'day'}`} />
                 )}
                 {item.quantity && (
                   <DetailRow label="Quantity" value={item.quantity} />
@@ -180,6 +212,7 @@ export default function DetailModal({
                 </div>
               ) : (
                 <button
+                  onClick={handleBuyNow}
                   className="w-full py-3.5 rounded-xl font-heading text-sm font-bold tracking-wider uppercase text-black transition-all duration-300 hover:-translate-y-0.5"
                   style={{
                     background: config.color,
